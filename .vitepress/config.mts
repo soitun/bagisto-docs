@@ -25,7 +25,30 @@ export default defineConfig({
     },
 
     nav: [
-      { text: 'AI', link: '/ai/introduction' },
+      {
+        text: 'AI',
+        items: [
+          {
+            text: 'Overview',
+            items: [
+              { text: 'AI in Bagisto', link: '/ai/introduction' },
+            ],
+          },
+          {
+            text: 'For your store',
+            items: [
+              { text: 'Magic AI', link: '/ai/magic-ai' },
+            ],
+          },
+          {
+            text: 'For developers & AI agents',
+            items: [
+              { text: 'Agent Skills', link: '/ai/agent-skills' },
+              { text: 'llms.txt', link: '/ai/llms-txt' },
+            ],
+          },
+        ],
+      },
       { text: 'User Guide', link: 'https://docs.bagisto.com/' },
       { text: 'Extensions', link: 'https://bagisto.com/en/extensions/' },
       { text: 'Community Forum', link: 'https://forums.bagisto.com/' },
