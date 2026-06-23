@@ -15,6 +15,8 @@ server {
     server_name example.com;
     root /srv/example.com/public;
 
+    client_max_body_size 10M;
+
     add_header X-Frame-Options "SAMEORIGIN";
     add_header X-Content-Type-Options "nosniff";
 
@@ -22,14 +24,58 @@ server {
 
     charset utf-8;
 
+    gzip on;
+    gzip_vary on;
+    gzip_comp_level 6;
+    gzip_min_length 256;
+    gzip_proxied any;
+    gzip_types
+        text/plain
+        text/css
+        text/xml
+        text/javascript
+        application/javascript
+        application/json
+        application/xml
+        application/rss+xml
+        image/svg+xml;
+
+    location ^~ /themes/ {
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+        access_log off;
+        try_files $uri =404;
+    }
+
+    location ^~ /cache/ {
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+        access_log off;
+        try_files $uri /index.php?$query_string;
+    }
+
+    location ^~ /storage/ {
+        expires 30d;
+        add_header Cache-Control "public";
+        access_log off;
+        try_files $uri /index.php?$query_string;
+    }
+
     location / {
         try_files $uri $uri/ /index.php?$query_string;
     }
 
     location ~* ^\/(?!cache).*\.(?:jpg|jpeg|gif|png|ico|cur|gz|svg|svgz|mp4|ogg|ogv|webm|htc|webp|woff|woff2)$ {
-      expires max;
-      access_log off;
-      add_header Cache-Control "public";
+        expires max;
+        access_log off;
+        add_header Cache-Control "public";
+    }
+
+    location ~* \.(?:woff2?|ttf|eot|otf|ico|svg|jpe?g|png|gif|webp|avif|css|js)$ {
+        expires 30d;
+        add_header Cache-Control "public";
+        access_log off;
+        try_files $uri $uri/ /index.php?$query_string;
     }
 
     location = /favicon.ico { access_log off; log_not_found off; }
@@ -74,6 +120,7 @@ Make sure you have the `mod_rewrite` module enabled in Apache. You can enable it
 sudo a2enmod rewrite
 sudo systemctl restart apache2
 ```
+
 :::
 
 ## ⚡ Optimization
