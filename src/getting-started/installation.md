@@ -190,76 +190,64 @@ git clone https://github.com/bagisto/bagisto-docker.git bagisto-docker
 cd bagisto-docker
 ```
 
-#### Step 2: Configure Docker Compose
+#### Step 2: Pick a web server runtime
 
-Edit `docker-compose.yml` to adjust ports and settings:
+The repository ships **three interchangeable web server runtimes** — pick whichever you want to run. Each has its own compose file that builds the runtime image and brings up MySQL, phpMyAdmin and Mailpit:
+
+| Runtime | Web server | Compose file |
+|---------|------------|--------------|
+| `nginx-php`     | Nginx + PHP-FPM       | `docker-compose.nginx-php.yml` |
+| `litespeed-php` | OpenLiteSpeed + lsphp | `docker-compose.litespeed-php.yml` |
+| `apache-php`    | Apache + mod_php      | `docker-compose.apache-php.yml` |
+
+Adjust the `uid` (to your host UID) or the ports in the chosen file if needed:
 
 ```yaml
-version: '3.1'
-
 services:
-    bagisto-php-apache:
-        build:
-            args:
-                container_project_path: /var/www/html/
-                uid: 1000
-                user: $USER
-            context: .
-            dockerfile: ./Dockerfile
-        image: bagisto-php-apache
-        ports:
-            - 80:80
-        volumes:
-            - ./workspace/:/var/www/html/
+  nginx-php:
+    build:
+      args:
+        uid: 1000 # set to your host UID
+        user: $USER
+        container_project_path: /var/www/html/
+      context: ./runtimes/nginx-php
+      dockerfile: Dockerfile
+    image: nginx-php
+    ports:
+      - 80:80
+      - 5173:5173 # Vite dev server
+    volumes:
+      - ./workspace/:/var/www/html/
 
-    bagisto-mysql:
-        image: mysql:8.0
-        command: --default-authentication-plugin=mysql_native_password
-        restart: always
-        environment:
-            MYSQL_ROOT_HOST: '%'
-            MYSQL_ROOT_PASSWORD: root
-        ports:
-            - 3306:3306
-        volumes:
-            - ./.configs/mysql-data:/var/lib/mysql/
-
-    bagisto-phpmyadmin:
-        image: phpmyadmin:latest
-        restart: always
-        environment:
-            PMA_HOST: bagisto-mysql
-            PMA_USER: root
-            PMA_PASSWORD: root
-        ports:
-            - 8080:80
+  # ... plus mysql, phpmyadmin and mailpit services
 ```
 
 #### Step 3: Launch Services
 
-Run the following command to initialize and build the Docker containers:
+Run the setup script to initialize and build everything:
 
 ```bash
 sh setup.sh
 ```
 
-This is a one-time setup script that prepares your environment for Bagisto. It will build the necessary Docker images, install dependencies, and configure your containers according to the Dockerfile and `docker-compose.yml`. Once completed, your services will be ready to start and you can access Bagisto through your browser.
+This one-time script **asks which runtime you want** (`nginx-php`, `litespeed-php`, or `apache-php`), then builds that runtime's image, starts the services, installs Bagisto into the `workspace/` directory, and seeds demo data. Once completed, you can access Bagisto through your browser.
 
 #### Step 4: Access Services
 
 - **Store**: `http://localhost`
 - **Admin Panel**: `http://localhost/admin`
-- **PHPMyAdmin**: `http://localhost:8080`
+- **PHPMyAdmin**: `http://localhost:3030`
+- **Mailpit**: `http://localhost:8025`
 
 ::: tip Managing Services
-To stop the Docker Compose services, run:
+Use the compose file for your chosen runtime. To stop the services, run:
 ```bash
-docker compose down
+docker compose -f docker-compose.nginx-php.yml down
 ```
 
 To start them again, use:
 ```bash
-docker compose up -d
+docker compose -f docker-compose.nginx-php.yml up -d
 ```
 :::
 

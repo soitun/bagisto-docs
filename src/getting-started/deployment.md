@@ -1,6 +1,6 @@
 # 🚀 Deployment
 
-If you are deploying your Bagisto application to a server that is running Nginx, you may use the following configuration file as a starting point for configuring your web server. Most likely, this file will need to be customized depending on your server's configuration.
+If you are deploying your Bagisto application to a server running **Nginx**, **OpenLiteSpeed (LiteSpeed)**, or **Apache**, you may use one of the following configurations as a starting point for your web server. Most likely, these will need to be customized depending on your server's configuration. Each section also shows how to enable that server's page cache.
 
 Please ensure, like the configuration below, your web server directs all requests to your application's `public/index.php` file. You should never attempt to move the `index.php` file to your project's root, as serving the application from the project root will expose many sensitive configuration files to the public Internet.
 
@@ -96,7 +96,115 @@ server {
 }
 ```
 
-## 🔄 Apache (Alternative)
+### ⚡ Nginx FastCGI Cache
+
+To cache rendered pages, declare a cache zone in the `http {}` block:
+
+```nginx
+fastcgi_cache_path /var/cache/nginx/bagisto levels=1:2 keys_zone=BAGISTO:100m inactive=60m;
+fastcgi_cache_key  "$scheme$request_method$host$request_uri";
+```
+
+Then, inside the `server {}` block, decide what to skip and enable the cache on the PHP location:
+
+```nginx
+# Never cache dynamic / authenticated areas
+set $skip_cache 0;
+if ($request_method = POST)                                { set $skip_cache 1; }
+if ($request_uri ~* "/(admin|checkout|cart|customer|api)") { set $skip_cache 1; }
+if ($http_cookie ~* "bagisto_session")                     { set $skip_cache 1; }
+
+location ~ ^/index\.php(/|$) {
+    fastcgi_pass unix:/var/run/php/php8.3-fpm.sock;
+    fastcgi_param SCRIPT_FILENAME $realpath_root$fastcgi_script_name;
+    include fastcgi_params;
+
+    fastcgi_cache        BAGISTO;
+    fastcgi_cache_valid  200 301 302 10m;
+    fastcgi_cache_bypass $skip_cache;
+    fastcgi_no_cache     $skip_cache;
+    add_header           X-FastCGI-Cache $upstream_cache_status;
+}
+```
+
+::: warning Cache only public pages
+Bagisto is a dynamic store — never cache the cart, checkout, customer account, admin, or API. The `$skip_cache` rules (and the session-cookie check) keep personalized responses uncached.
+:::
+
+## 🪶 LiteSpeed (OpenLiteSpeed)
+
+To serve Bagisto with OpenLiteSpeed, point a virtual host at the `public/` directory and route everything through `index.php`. Below is a virtual host config file (e.g. `conf/vhosts/bagisto.conf`):
+
+```
+docRoot                   $VH_ROOT/public
+enableGzip                1
+
+index {
+  useServer               0
+  indexFiles              index.php
+}
+
+scripthandler {
+  add                     lsapi:lsphp php
+}
+
+rewrite {
+  enable                  1
+  rules                   <<<END_rules
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^(.*)$ /index.php [L]
+END_rules
+}
+
+context / {
+  allowBrowse             1
+}
+```
+
+### ⚡ LiteSpeed Cache (LSCache)
+
+OpenLiteSpeed ships the built-in **LSCache** module. Enable it at the server level (`WebAdmin → Server Configuration → Module → cache`, or in `httpd_config.conf`):
+
+```
+module cache {
+  enableCache             1
+  qsCache                 1
+  reqCookieCache          0
+  expireInSeconds         300
+  maxStaleAge             200
+  maxCacheObjSize         10000000
+  storagePath             /tmp/lscache
+}
+```
+
+Then, in the vhost `rewrite` rules, mark public storefront pages as cacheable while excluding the dynamic areas:
+
+```
+rewrite {
+  enable                  1
+  rules                   <<<END_rules
+RewriteEngine On
+
+# Do not cache dynamic / authenticated areas
+RewriteRule ^/(admin|checkout|cart|customer|api)(/|$) - [E=Cache-Control:no-cache]
+
+# Cache other GET pages for 5 minutes
+RewriteCond %{REQUEST_METHOD} GET
+RewriteRule .* - [E=Cache-Control:max-age=300]
+
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^(.*)$ /index.php [L]
+END_rules
+}
+```
+
+::: warning Cache only public pages
+As with any cache in front of a store, exclude the cart, checkout, customer, admin and API so personalized/authenticated responses are never served from cache.
+:::
+
+## 🔄 Apache
 
 To serve Bagisto using Apache, make sure your virtual host is properly configured. Below is a basic VirtualHost example suitable for local development:
 
@@ -121,6 +229,39 @@ sudo a2enmod rewrite
 sudo systemctl restart apache2
 ```
 
+:::
+
+### ⚡ Apache Cache (mod_cache)
+
+Enable the cache modules, then store cacheable responses on disk:
+
+```bash
+sudo a2enmod cache cache_disk
+sudo systemctl restart apache2
+```
+
+Add the following inside your `<VirtualHost>` block:
+
+```apache
+<IfModule mod_cache.c>
+    CacheQuickHandler off
+    CacheRoot /var/cache/apache2/bagisto
+    CacheEnable disk /
+    CacheDirLevels 2
+    CacheDirLength 1
+    CacheDefaultExpire 300
+
+    # Do not cache dynamic / authenticated areas
+    CacheDisable /admin
+    CacheDisable /checkout
+    CacheDisable /cart
+    CacheDisable /customer
+    CacheDisable /api
+</IfModule>
+```
+
+::: warning Cache only public pages
+Exclude the cart, checkout, customer, admin and API (as above) so personalized/authenticated responses are never cached.
 :::
 
 ## ⚡ Optimization
